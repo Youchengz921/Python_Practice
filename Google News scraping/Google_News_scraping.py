@@ -1,3 +1,5 @@
 from scraparazzie import scraparazzie
 
-client = scraparazzie.NewClient(language='chinese traditional', location='Taiwan', topic='Business', max_result=8, )
+client = scraparazzie.NewsClient(language='chinese traditional', location='Taiwan', topic='Business', max_results=8)
+
+client.print_news()
