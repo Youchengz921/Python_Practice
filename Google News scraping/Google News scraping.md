@@ -37,4 +37,4 @@ from scraparazzie import scraparazzie
 ---
 
 **取得新聞資料**  
-items = 物件.export_news()  
+  items = 物件.export_news()  
