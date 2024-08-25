@@ -1,12 +1,18 @@
 爬取Google News資訊
 ===
 
-**模組: scraparazzie**
-'''
+模組: scraparazzie
+---
+
+```python
 from scraparazzie import scraparazzie
-'''
+```
 
 ---
+
+初始化物件
+---
+
 **物件 = scraparazzie.NewsClient(參數1, 參數2, ...)**
 scraparazzie的參數:
 
