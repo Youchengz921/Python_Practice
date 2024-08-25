@@ -1,7 +1,9 @@
 from scraparazzie import scraparazzie
 
+# 使用 NewsClient 函數建立物件
 client = scraparazzie.NewsClient(language='chinese traditional', location='Taiwan', topic='Business', max_results=5)
 
+# 顯示爬取資料
 # client.print_news()
 
 items = client.export_news()
