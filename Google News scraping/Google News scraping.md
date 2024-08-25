@@ -25,3 +25,16 @@ from scraparazzie import scraparazzie
 **物件.print_news()**  
 
   顯示爬取資料，包含標題、連結、來源機構及發布時間。
+
+---
+
+**可用參數值查詢**  
+  
+* 物件.languages
+* 物件.locations
+* 物件.topics
+
+---
+
+**取得新聞資料**  
+items = 物件.export_news()  
