@@ -61,7 +61,7 @@ exchange_rate_api_url = "https://api.exchangerate-api.com/v4/latest/USD"
 threshold_value = float(input("請輸入匯率監測的值 (例如 30.00): "))
 
 # 間隔秒數
-wait_time = 30  
+wait_time = 600
 
 # 設定通知次數
 max_notifications = 3    # 最大通知數
