@@ -6,7 +6,7 @@ import time
 
 # 讀取lineNotify token
 load_dotenv("line_notify.env")
-line_token = os.getenv("LINE_NOTIFY_TOKEN")
+line_token = os.getenv("test_robot_token")
 
 # 設定lineNotify
 def lineNotify(line_token, msg):
@@ -49,7 +49,7 @@ def sendline(date, threshold, realprice, token):
     status_code = lineNotify(token, msg)
     return status_code
 
-# 獲取當前日期和時間
+# 當前日期和時間
 def get_current_date():
     now = datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S")
@@ -57,15 +57,15 @@ def get_current_date():
 # 匯率 API URL
 exchange_rate_api_url = "https://api.exchangerate-api.com/v4/latest/USD"
 
-# 輸入監測的數值
+# 監測數值
 threshold_value = float(input("請輸入匯率監測的值 (例如 30.00): "))
 
-# 設定時間間隔（秒）
-interval = 300  # 每五分鐘測量一次
+# 間隔秒數
+wait_time = 30  
 
 # 設定通知次數
-max_notifications = 3
-notification_count = 0
+max_notifications = 3    # 最大通知數
+notification_count = 0   
 
 while notification_count < max_notifications:
     # 獲取即時匯率價格
@@ -82,6 +82,6 @@ while notification_count < max_notifications:
         print("Failed to retrieve exchange rate.")
     
     # 等待指定的時間間隔後再測量
-    time.sleep(interval)
+    time.sleep(wait_time)
 
 print("已達到最大通知次數，程式結束。")
