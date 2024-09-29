@@ -1,0 +1,292 @@
+import requests
+import os
+import json
+from dotenv import load_dotenv
+import schedule
+import time
+import logging
+from datetime import datetime, timedelta
+from logging.handlers import RotatingFileHandler
+
+# 獲取程式碼所在目錄
+current_directory = os.path.dirname(os.path.abspath(__file__))
+
+# 日誌文件路徑
+weather_log_file_path = os.path.join(current_directory, 'weather.log')
+water_log_file_path = os.path.join(current_directory, 'water.log')
+menstrual_log_file_path = os.path.join(current_directory, 'Menstrual_reminder.log')
+
+# 設置天氣日誌
+weather_logger = logging.getLogger('weather_logger')
+weather_logger.setLevel(logging.DEBUG)
+
+weather_file_handler = RotatingFileHandler(weather_log_file_path, maxBytes=5e6, backupCount=1)  # 5MB
+weather_file_handler.setLevel(logging.INFO)
+
+weather_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+weather_file_handler.setFormatter(weather_formatter)
+
+weather_logger.addHandler(weather_file_handler)
+
+# 設置喝水提醒日誌
+water_logger = logging.getLogger('water_logger')
+water_logger.setLevel(logging.DEBUG)
+
+water_file_handler = RotatingFileHandler(water_log_file_path, maxBytes=3e6, backupCount=1)  # 3MB
+water_file_handler.setLevel(logging.INFO)
+
+water_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+water_file_handler.setFormatter(water_formatter)
+
+water_logger.addHandler(water_file_handler)
+
+# 設置月經提醒日誌
+menstrual_logger = logging.getLogger('menstrual_logger')
+menstrual_logger.setLevel(logging.DEBUG)
+
+# 文件處理器
+menstrual_file_handler = RotatingFileHandler(menstrual_log_file_path, maxBytes=1e6, backupCount=1)  # 1MB
+menstrual_file_handler.setLevel(logging.INFO)
+
+menstrual_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+menstrual_file_handler.setFormatter(menstrual_formatter)
+
+menstrual_logger.addHandler(menstrual_file_handler)
+
+
+# 載入 .env 檔案
+load_dotenv('line notify.env')
+
+# 取得 LINE Notify API Token 和配置路徑
+Chose_API = input('1: 個人\n2: 群組\n:')
+if Chose_API == '1':    
+    LINE_NOTIFY_TOKEN = os.getenv('LINE_NOTIFY_TOKEN')  # 個人TOKEN
+    print('已使用個人Line Notify。')
+elif Chose_API == '2':
+    LINE_NOTIFY_TOKEN = os.getenv('GROUP_TOKEN')        # 群組TOKEN
+    print('已使用群組Line Notify。')
+else:
+    print("無效的選擇，請重新運行程序並選擇 1 或 2。")
+    exit()
+
+LINE_NOTIFY_API_URL = 'https://notify-api.line.me/api/notify'
+WEATHER_API_TOKEN = os.getenv('MYSELF_API')
+config_path = os.getenv('CONFIG_PATH')
+NEW_WEATHER_API_URL = os.getenv('NEW_WEATHER_URL')
+
+# 讀取配置文件
+def load_config():
+    if not config_path:
+        raise ValueError("CONFIG_PATH 未設定")
+    
+    if not os.path.isfile(config_path):
+        raise FileNotFoundError(f"配置文件不存在: {config_path}")
+
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    
+    # 驗證必要的配置項
+    required_keys = ['menstrual', 'cities', 'weather_times', 'water_times']
+    for key in required_keys:
+        if key not in config:
+            raise ValueError(f"配置文件缺少必要的項目: {key}")
+    
+    return config
+
+# 發送消息到 LINE Notify
+def send_line_notify(message, logger, retries=3, delay=5):
+    headers = {
+        'Authorization': f'Bearer {LINE_NOTIFY_TOKEN}',
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    payload = {'message': message}
+    for attempt in range(retries):
+        try:
+            response = requests.post(LINE_NOTIFY_API_URL, headers=headers, data=payload)
+            response.raise_for_status()  # 檢查 HTTP 錯誤
+            logger.info("通知發送成功！")
+            break
+        except requests.exceptions.RequestException as e:
+            logger.error(f"通知發送失敗，錯誤: {e}")
+            if attempt < retries - 1:
+                logger.info(f"等待 {delay} 秒後重試...")
+                time.sleep(delay)
+    else:
+        logger.error(f"通知發送失敗，錯誤: {e}")
+
+# 查詢天氣並發送到 LINE Notify
+def fetch_weather_and_notify(city_name):
+    """查詢天氣並發送到 LINE Notify"""
+    url = f"https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization={WEATHER_API_TOKEN}"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # 檢查 HTTP 錯誤
+
+        data = response.json()
+
+        # 處理氣象資料
+        location_data = next((item for item in data.get("records", {}).get("location", []) if item["locationName"] == city_name), None)
+        
+        if location_data:
+            weather_element = {elem.get('elementName', '未知'): elem for elem in location_data.get("weatherElement", [])}
+            
+            times = weather_element.get("Wx", {}).get("time", [])
+            if times:
+                date_range = f"{times[0].get('startTime', '未知')[:10]} 至 {times[-1].get('endTime', '未知')[:10]}"
+            else:
+                date_range = "未知"
+            
+            weather = weather_element.get("Wx", {}).get("time", [{}])[0].get("parameter", {}).get("parameterName", "未知")
+            rain_probability = weather_element.get("PoP", {}).get("time", [{}])[0].get("parameter", {}).get("parameterName", "未知")
+            min_temp = weather_element.get("MinT", {}).get("time", [{}])[0].get("parameter", {}).get("parameterName", "未知")
+            max_temp = weather_element.get("MaxT", {}).get("time", [{}])[0].get("parameter", {}).get("parameterName", "未知")
+
+            notification_message = ""
+            try:
+                rain_prob_int = int(rain_probability)
+                max_temp_int = int(max_temp)
+                if rain_prob_int > 50 and max_temp_int > 30:
+                    notification_message = "\n☔ 機率超過50%，🔥超過30°C，記得攜帶雨具並注意防暑！"
+                elif rain_prob_int > 50:
+                    notification_message = "\n☔ 降雨機率超過50%，記得攜帶雨具！"
+                elif max_temp_int > 30:
+                    notification_message = "\n🔥 高溫超過30°C，請注意防暑！"
+            except ValueError:
+                # 如果轉換失敗，則不附加額外訊息
+                pass
+
+            message = (
+                f"📣 天氣預報 🚨\n"
+                f"地點: 【{city_name}】\n"
+                f"日期: {date_range}\n"
+                f"🌤 天氣狀況: {weather}\n"
+                f"☔ 降雨機率: {rain_probability}%\n"
+                f"🌡 最高溫度: {max_temp}°C\n"
+                f"🌡 最低溫度: {min_temp}°C"
+                f"{notification_message}"
+            )
+            
+            send_line_notify(message, weather_logger)
+        else:
+            weather_logger.warning(f"無法取得 {city_name} 的天氣資料。")
+    
+    except requests.exceptions.RequestException as e:
+        weather_logger.error(f"請求發生錯誤: {e}")
+    except ValueError as e:
+        weather_logger.error(f"JSON 解析錯誤: {e}")
+
+# 讀取配置
+config = load_config()
+menstrual_config = config['menstrual']
+
+# 設定上一次月經結束日期
+last_period_end_date = datetime.strptime(menstrual_config['last_period_end_date'], '%Y-%m-%d')
+
+# 計算下一次月經的預計日期和提醒日期
+cycle_length = menstrual_config['cycle_length']
+reminder_start_day = menstrual_config['reminder_start_day']
+reminder_duration = menstrual_config['reminder_duration']
+
+next_period_start_date = last_period_end_date + timedelta(days=cycle_length)
+reminder_start_date = last_period_end_date + timedelta(days=reminder_start_day)
+
+# 發送月經提醒
+def send_menstrual_reminder():
+    """發送月經提醒到 LINE Notify"""
+    today = datetime.now().date()
+    reminder_end_date = reminder_start_date.date() + timedelta(days=reminder_duration)
+    
+    if reminder_start_date.date() <= today <= reminder_end_date:
+        message = "🌸 嘿嘿，小提醒～\n你的小紅即將來訪啦！\n別忘了準備好其他物品喔 💪😌"
+        try:
+            send_line_notify(message, menstrual_logger)
+            menstrual_logger.info(f"月經提醒發送成功！於: {datetime.now()}")
+        except Exception as e:
+            menstrual_logger.error(f"月經提醒發送失敗，錯誤: {e}")
+    else:
+        menstrual_logger.info(f"今天 {today} 不在提醒範圍內 ({reminder_start_date.strftime('%Y-%m-%d')} - {reminder_end_date.strftime('%Y-%m-%d')}), 無需發送訊息")
+
+# 發送喝水提醒到 LINE Notify
+def send_drink_water_reminder():
+    """發送喝水提醒到 LINE Notify"""
+    message = "🚰 喝水時間到！\n請記得喝一杯水，保持身體健康。"
+    send_line_notify(message, water_logger)
+
+# 讀取配置文件並執行天氣預報
+def job_weather():
+    try:
+        config = load_config()
+        cities_to_notify = config.get('cities', [])
+        for city in cities_to_notify:
+            fetch_weather_and_notify(city)
+    except (FileNotFoundError, ValueError) as e:
+        weather_logger.error(f"配置文件錯誤: {e}")
+        exit(1)
+
+# 讀取喝水提醒時間
+def schedule_drink_water_reminder():
+    json_file_path = os.path.join('line notify', 'config.json')
+    if not os.path.isfile(json_file_path):
+        water_logger.error(f"喝水提醒配置文件不存在: {json_file_path}")
+        return
+    try:
+        with open(json_file_path, 'r') as file:
+            config = json.load(file)
+        reminder_times = config.get('water_times', [])
+        
+        for water_time in reminder_times:
+            schedule.every().day.at(water_time).do(send_drink_water_reminder)
+            water_logger.info(f"已設定喝水提醒時間: {water_time}")
+    except json.JSONDecodeError as e:
+        water_logger.error(f"喝水提醒配置文件解析錯誤: {e}")
+
+# 設置月經提醒時間
+def schedule_menstrual_reminders():
+    """設置月經提醒的定時任務"""
+    config = load_config()
+    reminder_times = config.get('menstrual', {}).get('reminder_times', ["08:00", "23:50"])
+    for reminder_time in reminder_times:
+        schedule.every().day.at(reminder_time).do(send_menstrual_reminder)
+    menstrual_logger.info(f"月經提醒已設定，將從 {reminder_start_date.strftime('%Y-%m-%d')} 開始，每天發送提醒共 {reminder_duration} 天")
+    print(f"月經提醒已設定，將從 {reminder_start_date.strftime('%Y-%m-%d')} 開始，每天發送提醒共 {reminder_duration} 天")  # 終端機顯示詳細設定
+
+# 發送啟動訊息並記錄
+def send_startup_message():
+    """選擇完TOKEN後發送啟動訊息到 LINE Notify"""
+    startup_message = f"📣 Line Notify 機器人已啟動。"
+    send_line_notify(startup_message, weather_logger)
+
+# 設定每天執行任務時間
+def schedule_weather_notifications():
+    try:
+        config = load_config()
+        notify_times = config.get('weather_times', [])
+        for notify_time in notify_times:
+            schedule.every().day.at(notify_time).do(job_weather)
+            weather_logger.info(f"已設定天氣預報提醒時間: {notify_time}")
+    except (FileNotFoundError, ValueError) as e:
+        weather_logger.error(f"配置文件錯誤: {e}")
+        exit(1)
+
+# 執行設置
+def setup():
+    # 設定天氣提醒
+    schedule_weather_notifications()
+    
+    # 設定喝水提醒
+    schedule_drink_water_reminder()
+    
+    # 設定月經提醒
+    schedule_menstrual_reminders()
+    
+    # 發送啟動訊息
+    send_startup_message()
+
+# 呼叫設置函數
+setup()
+
+# 持續運行任務
+while True:
+    schedule.run_pending()
+    time.sleep(60)  # 等待60秒再檢查

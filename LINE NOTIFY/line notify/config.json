@@ -1,0 +1,26 @@
+{
+    "cities": [ "臺中市"],
+
+    "weather_times": {
+        "weekday_default": ["08:00", "12:30", "23:50"],
+        "special_days": {
+            "Wednesday": ["07:30", "12:30", "23:00"],
+            "Thursday": ["07:30", "12:30", "23:00"],
+            "Friday": ["07:30", "12:30", "23:00"]
+        }
+    },
+
+    "water_times": [
+        "15:00",
+        "19:00"
+    ],
+
+    "menstrual": {
+        "last_period_end_date": "2024-08-30",
+        "cycle_length": 28,
+        "reminder_start_day": 21,
+        "reminder_duration": 7,
+        "reminder_times": ["08:00", "23:50"]
+    }
+
+}
